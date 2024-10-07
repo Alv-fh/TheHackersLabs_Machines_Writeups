@@ -1,0 +1,132 @@
+
+![[Pentesting/Writeups/Images/HuevosFritos/1.png]]
+
+## ¿Qué trabajamos con esta máquina?
+
+ - Fuzzing
+ - Reverse Shell
+ - Hash cracking
+ - Explotación del binario Python3
+
+## Fase de Reconocimiento
+
+Hacemos un escaneo con el comando `arp-scan`
+
+`arp-scan -I eth0 --localnet`
+
+![[Pentesting/Writeups/Images/HuevosFritos/2.png]]
+
+Ahora con nmap descubrimos los puertos abiertos:
+
+`nmap -p- -sS --min-rate=5000 -n -Pn 192.168.1.133 -oN Puertos.txt`
+
+![[Pentesting/Writeups/Images/HuevosFritos/2.png]]
+
+| Puertos | Servicios |
+| ------- | --------- |
+| 22/tcp  | SSH       |
+| 80/tcp  | http      |
+
+Ahora descubrimos versiones y sistema Operativo:
+
+`nmap -p22,80 -sS -sC -sV -O 192.168.1.133 -oN Targeted.txt`
+
+![[Pentesting/Writeups/Images/HuevosFritos/3.png]]
+
+## Fase de Explotación
+
+Revisamos el puerto 80, desde el Navegador y vemos que está corriendo un Apache. 
+
+![[Pentesting/Writeups/Images/HuevosFritos/4.png]]
+
+
+
+### Fuzzing Web
+
+Hacemos uso de Gobuster para reconocer rutas,
+
+`sudo gobuster dir -w /usr/share/wordlist/SecLists/Discovery/Web-Content/directory-list-2.3-medium.txt -x .php,.py,.html,.txt -u "http://192.168.1.133"`
+
+![[Pentesting/Writeups/Images/HuevosFritos/5.png]]
+
+/squirting
+
+![[Pentesting/Writeups/Images/HuevosFritos/6.png]]
+
+Vemos que tenemos un Login y un Upload file, así que vamos a intentar subir una revshell de php. Para ello utilizamos la de [pentestmonkey](https://github.com/pentestmonkey/php-reverse-shell). 
+
+La editamos y ponemos nuestra IP y el puerto que nos pondremos en escucha.
+
+![[Pentesting/Writeups/Images/HuevosFritos/7.png]]
+
+La intentamos subir pero dice que no acepta extensiones php, por lo que investigando, encuentro el siguiente artículo [Hacktricks-file-uploads](https://book.hacktricks.xyz/pentesting-web/file-upload)
+
+![[Pentesting/Writeups/Images/HuevosFritos/8.png]]
+
+Miramos el código fuente y al bajar encontramos una ruta.
+
+/pantumaca
+
+![[Pentesting/Writeups/Images/HuevosFritos/9.png]]
+
+Pruebo a cambiarle la extensión de .php a .phar.
+
+`mv php-reverse-shell.php php-reverse-shell.phar`
+
+Y ahora si nos deja subirla.
+
+![[Pentesting/Writeups/Images/HuevosFritos/10.png]]
+
+Miramos la ruta encontrada anteriormente y vemos que es donde se ha subido la rev-shell.
+
+![[Pentesting/Writeups/Images/HuevosFritos/11.png]]
+
+### Conseguir una reverse shell 
+
+Ahora nos ponemos en escucha en este caso por el puerto 443 con nc
+
+`sudo nc -nlvp 443` 
+
+Le damos al .phar para conseguir la revshell.
+
+![[Pentesting/Writeups/Images/HuevosFritos/12.png]]
+
+
+Hacemos una sanitización de la Bash para poder usarla sin problemas.
+
+![[Pentesting/Writeups/Images/HuevosFritos/13.png]]
+
+## Escalada de Privilegios
+
+Listamos usuarios con el /etc/passwd
+
+![[Pentesting/Writeups/Images/HuevosFritos/14.png]]
+
+root
+huevosfritos
+
+Buscamos binarios que podamos ejecutar como cualquier otro usuario, pero no encontramos nada, al igual que buscando binarios con permisos SUID.
+
+Entonctramos una id_rsa escondida en /var/backups/.cositas
+
+![[Pentesting/Writeups/Images/HuevosFritos/15.png]]
+
+Nos la guardamos e intentamos entrar con el usuario huevos fritos pero nos pide una clave para la id_rsa.
+
+![[Pentesting/Writeups/Images/HuevosFritos/16.png]]
+
+### Hash Cracking
+
+Utilizamos ssh2john para crear el hash de la id_rsa
+
+`ssh2john id_rsa > hash.txt`
+
+Ahora con johntheripper crackeamos ese hash con el rockyou.txt
+
+La encontramos `honda1`
+
+Entramos y vemos que podemos ejecutar  el binario python3, por lo que buscamos en gtfobins y encontramos que al hacer esto conseguimos ser root en este caso.
+
+![[Pentesting/Writeups/Images/HuevosFritos/17.png]]
+
+Conseguimos ser root.
